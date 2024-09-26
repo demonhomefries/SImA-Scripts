@@ -387,7 +387,7 @@ if confirmation.lower == "n":
 output_csv_fp = os.path.join(output_directory, "ImageIndex.ColumbusIDX.csv")
 
 
-for tiff_filepath in tiff_filepath_list[0:2]:
+for tiff_filepath in tiff_filepath_list:
     # Reset the data for the new image
     split_metadata = ""
     print(f"Parsing {tiff_filepath}...")
