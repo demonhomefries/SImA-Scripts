@@ -64,6 +64,10 @@ channel_presets = {
     "ChannelType": "Fluoresence"},
 }
 
+
+
+
+
 import tifffile
 import xml.etree.ElementTree as ET
 import json
@@ -72,6 +76,10 @@ import os
 import xmltodict
 from datetime import datetime
 import csv
+
+
+
+
 
 def get_input_output():
     print("\nPress Ctrl + C to exit anytime.")
@@ -207,15 +215,152 @@ def get_metadata_info(image_metadata):
 
     return plateName, measurementDate, row, column, field, timepoint, plane, channel, channelName, channelColor,channelType, resolutionX, resolutionY, exposureTimeS, emissionWavelength, excitationWavelength, positionX, positionY, timeOffset, absoluteTime, imageWidth, imageHeight, numFields, num_timepoints, objectiveMagnification, objectiveNA, acquisitionType, orientationMatrix, sourceFilename, wellID
 
+def create_append_SIMA_CSV(filepath, data):
+    headers = [
+        "PlateName", "MeasurementDate", "Row", "Column", "Field", "Timepoint", "Plane", "Channel",
+        "ChannelName", "ChannelColor", "ChannelType", "ImageResolutionX@um", "ImageResolutionY@um", 
+        "ExposureTime[s]", "MainEmissionWavelength@nm", "MainExcitationWavelength@nm", 
+        "PositionX@um", "PositionY@um", "TimeOffset@s", "AbsoluteTime@s", "ImageWidth", 
+        "ImageHeight", "NumberOfFields", "NumberOfTimepoints", "ObjectiveMagnification", 
+        "ObjectiveNA", "AcquisitionType", "OrientationMatrix", "SourceFilename"
+    ]
+    
+    try:
+        with open(filepath, mode='a+', newline='') as file:
+            writer = csv.writer(file)
+            
+            file.seek(0)
+            if file.read(1) == '':
+                writer.writerow(headers)
+            
+            writer.writerows(data)
+
+    except Exception as e:
+        print(f"ERROR create_append_SIMA_CSV: {e}")
+
+def colored_text(text, hex_color):
+    # Remove '#' if present in the hex string
+    hex_color = hex_color.lstrip('#')
+    
+    # Convert the hex color to RGB
+    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+    
+    # Return the colored text string with ANSI escape codes
+    return f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m{text}\033[0m"
+    
+def get_channel_settings_old(image_metadata, channel_presets):
+    num_channels = int(image_metadata["OME"]["Image"]["Pixels"]["SizeC"])
+
+    channel_names = list(channel_presets.keys())
+    print("\n")
+
+    for channelName_index, channel in enumerate(channel_names):
+        acquisitionType = channel_presets[channel_names[channelName_index]]["AcquisitionType"]
+        hex_color = channel_presets[channel_names[channelName_index]]["Color"]
+        print(colored_text(f"{channelName_index + 1}. {channel:<40} {acquisitionType:<15} {hex_color:<10}", hex_color))
+
+    print(f"\nEnter the number of your channel ID for the {num_channels} channels in each stack (e.g. Enter \"6\" for Confocal Texas Red)")
+
+    chosen_channel_ids = []
+    for i in range (0, num_channels):
+        while True:
+            channel_id = input(f"\nChannel {i+1} ID: ")
+
+            if not channel_id.isdigit():
+                print("WARNING: Your entry was not a number, please try again:\n")
+                continue
+            else:
+                channel_id = int(channel_id)
+            
+            if not (((channel_id - 1) >= 0) and ((channel_id - 1) <= len(channel_names))):
+                print("WARNING: Your entry was not in range of the available options, please try again:\n")
+                continue
+            
+            chosen_channel_name = channel_names[channel_id-1]
+            chosen_channel_ids.append((i, chosen_channel_name))
+            print(f"\tChannel {i+1} is {channel_names[channel_id - 1]}")
+            break
+    
+    return chosen_channel_ids
+
+def get_channel_settings(image_metadata, channel_presets):
+    num_channels = int(image_metadata["num_channels"])
+
+    channel_names = list(channel_presets.keys())
+    print("\n")
+
+    # Print out a list of options to choose from
+    for channelName_index, channel in enumerate(channel_names):
+        acquisitionType = channel_presets[channel_names[channelName_index]]["AcquisitionType"]
+        hex_color = channel_presets[channel_names[channelName_index]]["Color"]
+        print(colored_text(f"{channelName_index + 1}. {channel:<40} {acquisitionType:<15} {hex_color:<10}", hex_color))
+
+    print(f"\nEnter the number of your channel ID for the {num_channels} channels in each stack (e.g. Enter \"6\" for Confocal Texas Red)")
+
+    chosen_channel_ids = []
+    for i in range (0, num_channels):
+        while True:
+            channel_id = input(f"\nChannel {i+1} ID: ")
+
+            if not channel_id.isdigit():
+                print("WARNING: Your entry was not a number, please try again:\n")
+                continue
+            else:
+                channel_id = int(channel_id)
+            
+            if not (((channel_id - 1) >= 0) and ((channel_id - 1) <= len(channel_names))):
+                print("WARNING: Your entry was not in range of the available options, please try again:\n")
+                continue
+            
+            chosen_channel_name = channel_names[channel_id-1]
+            chosen_channel_ids.append((i, chosen_channel_name))
+            print(f"\tChannel {i+1} is {channel_names[channel_id - 1]}")
+            break
+    
+    return chosen_channel_ids
+
 def split_stack_channels_timepoints(tiff_filepath, image_metadata, channel_names_inorder, output_directory, create_well_folder):
 
-    plateName, measurementDate, row, column, field, timepoint, plane, channel, channelName, channelColor, channelType, resolutionX, resolutionY, exposureTimeS, emissionWavelength, excitationWavelength, positionX, positionY, timeOffset, absoluteTime, imageWidth, imageHeight, numFields, num_timepoints, objectiveMagnification, objectiveNA, acquisitionType, orientationMatrix, sourceFilename, well_ID = get_metadata_info(image_metadata)
+
+    field = image_metadata["field"]
+    plane = image_metadata["plane"]
+    orientationMatrix = image_metadata["orientationMatrix"]
+
+    # timepoint = None
+    # channel = None
+    # channelColor = image_metadata["channelColor"]
+    # sourceFilename = ""
+
+    plateName = image_metadata["plateName"]
+    measurementDate = image_metadata["measurementDate"]
+    row = image_metadata["row"]
+    column = image_metadata["column"]
+    channelName = image_metadata["channelName"]
+    channelType = image_metadata["channelType"]
+    resolutionX = image_metadata["resolutionX"]
+    resolutionY = image_metadata["resolutionY"]
+    exposureTimeS = image_metadata["exposureTimeS"]
+    emissionWavelength = image_metadata["emissionWavelength"]
+    excitationWavelength = image_metadata["excitationWavelength"]
+    positionX = image_metadata["positionX"]
+    positionY = image_metadata["positionY"]
+    timeOffset = image_metadata["timeOffset"]
+    absoluteTime = image_metadata["absoluteTime"]
+    imageWidth = image_metadata["imageWidth"]
+    imageHeight = image_metadata["imageHeight"]
+    numFields = image_metadata["numFields"]
+    num_timepoints = image_metadata["num_timepoints"]
+    objectiveMagnification = image_metadata["objectiveMagnification"]
+    objectiveNA = image_metadata["objectiveNA"]
+    acquisitionType = image_metadata["acquisitionType"]
+    well_ID = image_metadata["wellID"]
+
     if create_well_folder:
         output_directory = os.path.join(output_directory, well_ID)
         if not os.path.isdir(output_directory):
             os.mkdir(output_directory)
 
-    output_filepaths = []
+    output_metadata = []
     time_point_index = 0
     channel_name_index = 0
     
@@ -255,7 +400,7 @@ def split_stack_channels_timepoints(tiff_filepath, image_metadata, channel_names
 
             metadata_tuple = (plateName, measurementDate, row, column, field, timepoint, plane, channel, channelName, channelColor, channelType, resolutionX, resolutionY, exposureTimeS, emissionWavelength, excitationWavelength, positionX, positionY, timeOffset, absoluteTime, imageWidth, imageHeight, numFields, num_timepoints, objectiveMagnification, objectiveNA, acquisitionType, orientationMatrix, sourceFilename)
 
-            output_filepaths.append(metadata_tuple)
+            output_metadata.append(metadata_tuple)
 
             # Increment indices and reset if necessary
             channel_name_index = (channel_name_index + 1) % channel_name_index_max
@@ -263,75 +408,159 @@ def split_stack_channels_timepoints(tiff_filepath, image_metadata, channel_names
                 time_point_index = (time_point_index + 1) % time_point_index_max
         
             
-    return output_filepaths
+    return output_metadata
 
-def create_append_SIMA_CSV(filepath, data):
-    headers = [
-        "PlateName", "MeasurementDate", "Row", "Column", "Field", "Timepoint", "Plane", "Channel",
-        "ChannelName", "ChannelColor", "ChannelType", "ImageResolutionX@um", "ImageResolutionY@um", 
-        "ExposureTime[s]", "MainEmissionWavelength@nm", "MainExcitationWavelength@nm", 
-        "PositionX@um", "PositionY@um", "TimeOffset@s", "AbsoluteTime@s", "ImageWidth", 
-        "ImageHeight", "NumberOfFields", "NumberOfTimepoints", "ObjectiveMagnification", 
-        "ObjectiveNA", "AcquisitionType", "OrientationMatrix", "SourceFilename"
-    ]
+
+
+
+
+
+
+
+def extract_metadata_as_dict(tiff_path):
+
+    with tifffile.TiffFile(tiff_path) as tif:
+        # Check for OME metadata and parse if available
+        if tif.ome_metadata:
+            ome_dict = xmltodict.parse(tif.ome_metadata)
+            return get_clean_metadata_dict(clean_dict_keys(ome_dict))
+
+        # If OME metadata is not available, extract and parse metadata from page 0
+        if tif.pages:
+            page_0 = tif.pages[0]
+            page_0_metadata_xml = page_0.description  # Assuming XML metadata is in the description field
+            if page_0_metadata_xml:
+                try:
+                    page_0_dict = xmltodict.parse(page_0_metadata_xml)
+                    return get_clean_metadata_dict(clean_dict_keys(page_0_dict))
+                except Exception as e:
+                    if "IJMetadata" in page_0.tags:
+                        ij_metadata = page_0.tags["IJMetadata"].value["Info"]
+                        start_index = ij_metadata.find("<OME")
+                        if start_index != -1:
+                            ij_metadata = ij_metadata[start_index:]
+                        ome_dict = xmltodict.parse(ij_metadata)
+                        return get_clean_metadata_dict(clean_dict_keys(ome_dict))
+                    
+                    else:
+                        return None
+
+        return None
     
-    try:
-        with open(filepath, mode='a+', newline='') as file:
-            writer = csv.writer(file)
-            
-            file.seek(0)
-            if file.read(1) == '':
-                writer.writerow(headers)
-            
-            writer.writerows(data)
+def get_value_from_metadata_dict(final_key, data):
+    """Recursively search for the final key in a nested dictionary and return its value."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == final_key:
+                return value
+            elif isinstance(value, dict):
+                result = get_value_from_metadata_dict(final_key, value)
+                if result is not None:
+                    return result
+            elif isinstance(value, list):
+                for item in value:
+                    result = get_value_from_metadata_dict(final_key, item)
+                    if result is not None:
+                        return result
+    return None
 
-    except Exception as e:
-        print(f"ERROR create_append_SIMA_CSV: {e}")
+def get_clean_metadata_dict(original_metadata_dict):    
 
-def colored_text(text, hex_color):
-    # Remove '#' if present in the hex string
-    hex_color = hex_color.lstrip('#')
+    # Calculated/Derived
     
-    # Convert the hex color to RGB
-    rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    
-    # Return the colored text string with ANSI escape codes
-    return f"\033[38;2;{rgb[0]};{rgb[1]};{rgb[2]}m{text}\033[0m"
-    
-def get_channel_settings(image_metadata, channel_presets):
-    num_channels = int(image_metadata["OME"]["Image"]["Pixels"]["SizeC"])
+    verticalTotal = get_value_from_metadata_dict("VerticalTotal", original_metadata_dict)
+    if verticalTotal is None:
+        verticalTotal = get_value_from_metadata_dict("verticalTotal", original_metadata_dict)
 
-    channel_names = list(channel_presets.keys())
-    print("\n")
+    horizTotal = get_value_from_metadata_dict("HorizontalTotal", original_metadata_dict)
+    if horizTotal is None:
+        horizTotal = get_value_from_metadata_dict("horizontalTotal", original_metadata_dict)
 
-    for channelName_index, channel in enumerate(channel_names):
-        acquisitionType = channel_presets[channel_names[channelName_index]]["AcquisitionType"]
-        hex_color = channel_presets[channel_names[channelName_index]]["Color"]
-        print(colored_text(f"{channelName_index + 1}. {channel:<40} {acquisitionType:<15} {hex_color:<10}", hex_color))
+    print(verticalTotal)
+    print(horizTotal)
 
-    print(f"\nEnter the number of your channel ID for the {num_channels} channels in each stack (e.g. Enter \"6\" for Confocal Texas Red)")
+    numFields = int(verticalTotal) * int(horizTotal)
 
-    chosen_channel_ids = []
-    for i in range (0, num_channels):
-        while True:
-            channel_id = input(f"\nChannel {i+1} ID: ")
+    exposureTimeMS = get_value_from_metadata_dict("ShutterSpeedMS", original_metadata_dict)
+    exposureTimeS = int(exposureTimeMS) / 1000
 
-            if not channel_id.isdigit():
-                print("WARNING: Your entry was not a number, please try again:\n")
-                continue
-            else:
-                channel_id = int(channel_id)
-            
-            if not (((channel_id - 1) >= 0) and ((channel_id - 1) <= len(channel_names))):
-                print("WARNING: Your entry was not in range of the available options, please try again:\n")
-                continue
-            
-            chosen_channel_name = channel_names[channel_id-1]
-            chosen_channel_ids.append((i, chosen_channel_name))
-            print(f"\tChannel {i+1} is {channel_names[channel_id - 1]}")
-            break
-    
-    return chosen_channel_ids
+    measurementDate = get_value_from_metadata_dict("Date", original_metadata_dict)
+    measurementDate, absoluteTime = convert_date_format(measurementDate)
+
+    wellID = get_value_from_metadata_dict("Well", original_metadata_dict)
+    row, column = well_id_to_row_col(wellID)
+
+    objectiveMagnification = get_value_from_metadata_dict("ObjectiveSize", original_metadata_dict)
+
+    objectiveSizeInt = int(objectiveMagnification)
+
+    if objectiveSizeInt == 4:
+        resolution = "1.6286"
+    elif objectiveSizeInt == 10:
+        resolution = "0.6500"
+    elif objectiveSizeInt == 20:
+        resolution = "0.3250"
+    elif objectiveSizeInt == 40:
+        resolution = "0.1612"
+    elif objectiveSizeInt == 60:
+        resolution = "0.1082"
+
+
+    image_width = get_value_from_metadata_dict("SizeX", original_metadata_dict)
+    if image_width == None or image_width == "":
+        image_width = get_value_from_metadata_dict("PixelWidth", original_metadata_dict)
+
+    image_height = get_value_from_metadata_dict("SizeY", original_metadata_dict)
+    if image_height == None or image_height == "":
+        image_height = get_value_from_metadata_dict("PixelHeight", original_metadata_dict)
+
+    clean_metadata_dict = {
+        "plateName" : get_value_from_metadata_dict("Plate", original_metadata_dict),
+        "measurementDate" : measurementDate,
+        "absoluteTime" : absoluteTime,
+        "wellID" : wellID,
+        "row" : row,
+        "column" : column,
+        "verticalTotal" : verticalTotal,
+        "horizTotal" : horizTotal,
+        "numFields": numFields,
+        "exposureTimeS" : exposureTimeS,
+        "channelName" : get_value_from_metadata_dict("Color", original_metadata_dict),
+        "emissionWavelength" : get_value_from_metadata_dict("EmissionWavelength", original_metadata_dict),
+        "excitationWavelength" : get_value_from_metadata_dict("ExcitationWavelength", original_metadata_dict),
+        "num_channels" : get_value_from_metadata_dict("SizeC", original_metadata_dict),
+        "num_timepoints" : get_value_from_metadata_dict("SizeT", original_metadata_dict),
+        "imageWidth" : image_width,
+        "imageHeight" : image_height,
+        "resolutionX" : resolution,
+        "resolutionY" : resolution,
+        "objectiveNA" : get_value_from_metadata_dict("NumericalAperture", original_metadata_dict),
+        "objectiveMagnification" : objectiveSizeInt,
+        "field" : "1",
+        "plane" : "1",
+        "channel" : "",
+        "timeOffset" : "0",
+        "orientationMatrix" : "[[1,0,0],[0,1,0],[0,0,1]]",
+        "acquisitionType" : "",
+        "sourceFilename" : "",
+        "timepoint" : "",
+        "channelColor" : "#0035FF",
+        "channelType" : "Fluoresence",
+        "positionX" : "0",
+        "positionY" : "0",
+
+    }
+
+    return clean_metadata_dict
+
+
+
+
+
+
+
+
+
 
 
 print("\n\n\nCAUTION: All the tifs in your input directory must have the same number of separate \nimage channels or else the split naming convention will not be accurate to the actual channel.\n")
@@ -348,21 +577,17 @@ if not os.path.isfile(test_tiff_filepath):
 if not test_tiff_filepath.endswith(".tif"):
     print(f"\n\nERROR {test_tiff_filepath} is not a tiff file. Enter a .tif filepath and retry.\n")
     exit()
-image_metadata = extract_ome_metadata_as_dict(test_tiff_filepath)
+
+image_metadata = extract_metadata_as_dict(test_tiff_filepath)
 if image_metadata is None:
-    print(f"ERROR extract_ome_metadata_as_dict: No OME Metadata was found for {test_tiff_filepath}. Exiting script...")
+    print(f"ERROR get_clean_metadata_dict: No OME Metadata was found for {test_tiff_filepath}. Exiting script...")
     exit()
 
-
-image_metadata = extract_ome_metadata_as_dict(test_tiff_filepath)
-if image_metadata is None:
-    print(f"ERROR extract_ome_metadata_as_dict: No OME Metadata was found for {test_tiff_filepath}. Exiting script...")
-    exit()
 
 # Get the settings for each channel according to the presets and convert it into a list to pass onto split_stack_channels_timepoints
 chosen_channel_ids = get_channel_settings(image_metadata, channel_presets)
 
-num_channels = image_metadata["OME"]["Image"]["Pixels"]["SizeC"]
+num_channels = image_metadata["num_channels"]
 channel_names_inorder = []
 for channel in chosen_channel_ids:
 
@@ -395,9 +620,13 @@ for tiff_filepath in tiff_filepath_list:
     
     # Extract the metadata
     print("\tExtracting metadata")
-    image_metadata = extract_ome_metadata_as_dict(tiff_filepath)
+
+    # original_metadata_dict = extract_metadata_as_dict(tiff_filepath)
+    # image_metadata = get_clean_metadata_dict(original_metadata_dict)
+    mage_metadata = extract_metadata_as_dict(tiff_filepath)
+
     if image_metadata is None:
-        print(f"ERROR extract_ome_metadata_as_dict: No OME Metadata was found for {tiff_filepath}. Exiting script...")
+        print(f"ERROR get_clean_metadata_dict: No OME Metadata was found for {tiff_filepath}. Exiting script...")
         exit()
 
     # Parse the metadata to write to the CSV
@@ -409,3 +638,7 @@ for tiff_filepath in tiff_filepath_list:
     create_append_SIMA_CSV(output_csv_fp, split_metadata)
 
 print("Finished process successfully")
+
+
+# TODO
+# Make sure split_stack_channels_timepoints can handle the new dict format for image_metadata
