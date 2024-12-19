@@ -623,7 +623,7 @@ for tiff_filepath in tiff_filepath_list:
 
     # original_metadata_dict = extract_metadata_as_dict(tiff_filepath)
     # image_metadata = get_clean_metadata_dict(original_metadata_dict)
-    mage_metadata = extract_metadata_as_dict(tiff_filepath)
+    image_metadata = extract_metadata_as_dict(tiff_filepath)
 
     if image_metadata is None:
         print(f"ERROR get_clean_metadata_dict: No OME Metadata was found for {tiff_filepath}. Exiting script...")
